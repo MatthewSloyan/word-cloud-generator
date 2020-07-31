@@ -1,0 +1,99 @@
+FUNCTION_BLOCK scores	// Block definition (there may be more than one block per file)
+
+	// Define input variables
+	// I decided to to use different related terms for each to distinguish between them
+	// meta = useful, title = relevant, headings = frequent, body = significant
+	VAR_INPUT	
+		meta : REAL;			
+		title : REAL;
+		headings : REAL;
+		body : REAL;
+	END_VAR
+	
+	// Define output variable
+	VAR_OUTPUT				
+		score : REAL;
+	END_VAR
+	
+	// Fuzzify input variable 'meta': {'not_useful', 'useful'}
+	// Meta tags have the highest weight with a score of 100, 
+	// from testing there would usually be 1 or none found.
+	// I decided to use just 'not_useful' & 'useful' to weight it
+	// so if 1 is found it is above 40, so it's useful and if 0 is found
+	// then it is not_useful.
+	FUZZIFY meta			
+		TERM not_useful := (0, 1) (30, 1) (50,0);
+		TERM useful := (40,0) (70, 1) (100,1);
+	END_FUZZIFY
+	
+	// Fuzzify input variable 'title': {'not_relevant', 'relevant'}
+	// The title has the second highest weight with a score of 50, 
+	// Again from testing there would usually be 1 or none found.
+	// I decided to use two terms 'not_relevant' & 'relevant' to weight it
+	// so if 1 is found it is above 50, so it's relevant and if 0 is found
+	// then it is not_relevant. This one of the other worked well for scoring.
+	FUZZIFY title			
+		TERM not_relevant := (0, 1) (30, 1) (40,0);
+		TERM relevant := (40,0) (70, 1) (100,1);
+	END_FUZZIFY
+	
+	// Fuzzify input variable 'headings': {'not_frequent', 'frequent', 'very_frequent'}
+	// As there is a number of headings (h1, h2 & h3) I decided to implement three terms, as from results
+	// the frequency could be low, medium or high. From testing the headings balanced nicely with a weight of 20
+	// between the three terms.
+	FUZZIFY headings			
+		TERM not_frequent := (0, 1) (30, 0); 
+		TERM frequent := (20,0) (50,1) (80,0);
+		TERM very_frequent := (70, 0) (100, 1);
+	END_FUZZIFY
+	
+	// Fuzzify input variable 'body': {'not_significant', 'significant', 'very_significant'}
+	// I assigned the body a weight of 2, as a word can occur quite often throughout the whole body.
+	// I used three terms as a body can vary in frequency with it's low weight.
+	// From testing it balanced nicely with the below values.
+	FUZZIFY body			
+		TERM not_significant := (0, 1) (30, 0); 
+		TERM significant := (20,0) (50,1) (80,0);
+		TERM very_significant := (70, 0) (100, 1);
+	END_FUZZIFY
+	
+	// Defuzzify output variable 'score': {'low', 'medium', 'high' }
+	// The score is used to determine if a node is worth indexing or searching it's children.
+	// I have chosen COGS (Center Of Gravity Sugeno) as my method as it very accurate result and is computationally more efficient.
+	// However I initially used Mamdani (Center of Gravity) which provided a very accurate result also but with significant computational burden. 
+	DEFUZZIFY score
+		TERM low := 25;
+		TERM medium := 50;
+		TERM high := 75;
+		METHOD : COGS;	// Use 'Center Of Gravity Sugeno' defuzzification method
+		DEFAULT := 0;	// Default value is 0 (if no rule activates defuzzifier)
+	END_DEFUZZIFY
+	
+	// Inference rules
+	RULEBLOCK No1
+		AND : MIN;	// Use 'min' for 'and'
+		ACT : MIN;	// Use 'min' activation method
+		ACCU : MAX;	// Use 'max' accumulation method
+	
+		// == Low == 
+		// I didn't want the body and heading to have a massive control on a low score as they're not weighted as much.
+		// Also as some pages just don't have meta tags I excluded it from rule 1, as it still could be a good webpage.
+		RULE 1 : IF title IS not_relevant OR headings IS not_frequent THEN score IS low;
+		RULE 2 : IF meta IS not_useful AND title IS not_relevant AND headings IS not_frequent AND body is not_significant THEN score IS low;
+		
+		// == Medium ==
+		// For medium results I focused on the title, headings, and body as again some pages don't have a meta tag.
+		// The score can be medium, if the title, headings or body are mid.
+		// Also if just the heading and body is mid then then the score is medium.
+		RULE 3 : IF title IS relevant OR headings IS frequent OR body IS significant THEN score IS medium;
+		RULE 4 : IF headings IS frequent AND body IS significant THEN score IS medium;
+		
+		// == High ==
+		// As the meta and title are highly weighted I wanted to focus on them for a high score.
+		// But the body and headings can still to be very_frequent and very_significant to push it over the edge.
+		RULE 5 : IF meta IS useful OR title IS relevant AND headings IS very_frequent OR body is very_significant THEN score IS high;
+		RULE 6 : IF meta IS useful OR title IS relevant THEN score IS high;
+		RULE 7 : IF title IS relevant AND headings IS very_frequent THEN score IS high;
+	END_RULEBLOCK
+
+END_FUNCTION_BLOCK
